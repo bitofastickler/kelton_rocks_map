@@ -222,25 +222,33 @@
       countEl.textContent = s.count.toLocaleString();
     }
 
-    async function refreshPins() {
-      const data = await fetchJSON("/api/sightings?limit=2000");
-      markers.clearLayers();
+    async function refreshPins({ refocus = false } = {}) {
+  const data = await fetchJSON("/api/sightings?limit=2000");
+  markers.clearLayers();
 
-      const items = data.items || [];
-      if (items.length === 0) {
-        map.setView([39.0, -77.0], 4);
-        return;
-      }
+  const items = data.items || [];
 
-      const latlngs = [];
-      for (const it of items) {
-        const ll = [it.lat, it.lon];
-        latlngs.push(ll);
-        L.circleMarker(ll, { radius: 6 }).addTo(markers);
-      }
+  // Always start from a neutral view unless explicitly told otherwise
+  if (!refocus) {
+    map.setView([39.0, -77.0], 4);
+  }
 
-      map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
-    }
+  if (items.length === 0) {
+    return;
+  }
+
+  const latlngs = [];
+  for (const it of items) {
+    const ll = [it.lat, it.lon];
+    latlngs.push(ll);
+    L.circleMarker(ll, { radius: 6 }).addTo(markers);
+  }
+
+  // Only zoom to points when explicitly requested
+  if (refocus) {
+    map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
+  }
+}
 
     async function logSightingFromGPS() {
       setStatus("");
