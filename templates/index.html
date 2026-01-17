@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kelton Rocks — Memorial Map</title>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+
+  <style>
+    :root { --card: #111827; --muted: #9ca3af; --bg: #0b1020; --fg: #e5e7eb; --accent: #60a5fa; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: radial-gradient(1200px 600px at 20% 0%, #101a3a 0%, var(--bg) 45%, #070a14 100%); color: var(--fg); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 28px 16px 40px; }
+    .header { display: grid; gap: 10px; margin-bottom: 16px; }
+    h1 { font-size: 22px; margin: 0; letter-spacing: .2px; }
+    .sub { color: var(--muted); font-size: 14px; line-height: 1.4; }
+
+    .grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+    .card { background: rgba(17, 24, 39, 0.75); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 16px; backdrop-filter: blur(6px); }
+    .big { font-size: 44px; font-weight: 700; line-height: 1; margin-top: 8px; }
+    .label { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    .btn {
+      width: 100%;
+      margin-top: 14px;
+      padding: 12px 14px;
+      border: 0;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(96,165,250,.95), rgba(59,130,246,.85));
+      color: #071021;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .note { margin-top: 12px; color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+    .status { margin-top: 10px; font-size: 13px; color: #c7d2fe; min-height: 18px; }
+
+    #map { height: 560px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; }
+    .footer { margin-top: 16px; color: var(--muted); font-size: 12px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>Kelton Rocks — Memorial Map</h1>
+      <div class="sub">
+        Tap “Kelton Rock Sighting” to add a pin where you found one.
+        We store only an anonymous GPS point and the time it was logged.
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">Total sightings</div>
+        <div id="count" class="big">—</div>
+        <div class="label">…so far</div>
+
+        <button id="btn" class="btn">Kelton Rock Sighting</button>
+        <div id="status" class="status"></div>
+
+        <div class="note">
+          Privacy: We do not collect names, emails, phone info, or accounts.
+          If you allow location, we store only latitude/longitude + timestamp.
+        </div>
+      </div>
+
+      <div id="map"></div>
+    </div>
+
+    <div class="footer">
+      Tip: on iPhone, location prompts work best in Safari/Chrome with HTTPS.
+    </div>
+  </div>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <script>
+    const countEl = document.getElementById("count");
+    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("btn");
+
+    // --- Map setup ---
+    const map = L.map('map', { zoomControl: true });
+    const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    const markers = L.layerGroup().addTo(map);
+
+    function setStatus(msg) { statusEl.textContent = msg || ""; }
+
+    async function fetchJSON(url, opts) {
+      const r = await fetch(url, opts);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    }
+
+    async function refreshStats() {
+      const s = await fetchJSON("/api/stats");
+      countEl.textContent = s.count.toLocaleString();
+    }
+
+    async function refreshPins() {
+      const data = await fetchJSON("/api/sightings?limit=2000");
+      markers.clearLayers();
+
+      const items = data.items || [];
+      if (items.length === 0) {
+        map.setView([39.0, -77.0], 4); // default-ish US view
+        return;
+      }
+
+      // Put newest points on the map
+      const latlngs = [];
+      for (const it of items) {
+        const ll = [it.lat, it.lon];
+        latlngs.push(ll);
+        const popup = `
+          <div style="font-family: system-ui; font-size: 13px;">
+            <div><b>Sighting</b></div>
+            <div>${new Date(it.created_at_utc).toLocaleString()}</div>
+          </div>`;
+        L.circleMarker(ll, { radius: 6 }).bindPopup(popup).addTo(markers);
+      }
+
+      const bounds = L.latLngBounds(latlngs);
+      map.fitBounds(bounds.pad(0.2));
+    }
+
+    async function logSightingFromGPS() {
+      setStatus("");
+      btn.disabled = true;
+      btn.textContent = "Logging…";
+
+      try {
+        if (!navigator.geolocation) {
+          setStatus("Geolocation isn’t supported on this device.");
+          return;
+        }
+
+        setStatus("Requesting location permission…");
+
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          });
+        });
+
+        const payload = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy_m: pos.coords.accuracy
+        };
+
+        setStatus("Saving sighting…");
+        await fetchJSON("/api/sightings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        setStatus("Saved. Thank you ❤️");
+        await refreshStats();
+        await refreshPins();
+      } catch (err) {
+        // user denied location OR error
+        setStatus("No worries — location wasn’t shared (or couldn’t be read).");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Kelton Rock Sighting";
+      }
+    }
+
+    btn.addEventListener("click", logSightingFromGPS);
+
+    // Initial load
+    (async () => {
+      try {
+        await refreshStats();
+        await refreshPins();
+      } catch (e) {
+        setStatus("Loading error (try refreshing).");
+      }
+    })();
+  </script>
+</body>
+</html>
