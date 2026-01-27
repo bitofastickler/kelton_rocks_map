@@ -55,3 +55,6 @@ No personally identifying information is collected or stored.
 pip install -r requirements.txt
 uvicorn app:app --reload
 
+```
+![image](https://raw.githubusercontent.com/bitofastickler/kelton_rocks_map/main/Screenshot%202026-01-27%20133730.png)
+
